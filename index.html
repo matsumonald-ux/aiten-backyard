@@ -149,6 +149,7 @@
     background:var(--surface-2); color:var(--ink-muted);
   }
   .log-mada{ font-size:13px; color:var(--warn); }
+  .dousa-row{ display:flex; flex-wrap:wrap; gap:6px; }
   .pc-ondo-good{ background:var(--good-bg); color:var(--good); }
   .pc-ondo-warn{ background:var(--warn-bg); color:var(--warn); font-weight:500; }
   .pc-ondo-bad{ background:var(--bad-bg); color:var(--bad); font-weight:700; }
@@ -280,6 +281,7 @@
     </div>
   </section>
   <p id="pcOndo" class="pc-ondo">パソコン本体の温度：—（接続すると表示します。外の気温ではありません）</p>
+  <div id="dousaJotai" class="dousa-row" aria-label="動作状態"><p class="empty">動作状態：接続すると表示します</p></div>
   <button class="btn btn-ghost btn-block" id="refreshStatsBtn" disabled>統計と温度を更新する</button>
 
   <details class="card" open>
@@ -351,6 +353,7 @@
     raiten: document.getElementById("raitenValue"),
     ninkan: document.getElementById("ninkanValue"),
     pcOndo: document.getElementById("pcOndo"),
+    dousaJotai: document.getElementById("dousaJotai"),
     raitenKara: document.getElementById("raitenKara"),
     ninkanKara: document.getElementById("ninkanKara"),
     resetRaitenBtn: document.getElementById("resetRaitenBtn"),
@@ -603,6 +606,19 @@
     // 0に戻した日時があれば「○○ から」と表示する（いつからの回数か分かるように）
     el.raitenKara.textContent = res.tokei.raiten_kaisuu_reset_toki ? fmtToki(res.tokei.raiten_kaisuu_reset_toki) + " から" : "";
     el.ninkanKara.textContent = res.tokei.ninkan_kaisuu_reset_toki ? fmtToki(res.tokei.ninkan_kaisuu_reset_toki) + " から" : "";
+    // 動作状態（AI店員・声・AI・Bluetooth が動いているか）
+    var d = res.dousa;
+    if(d){
+      var jotai = [
+        ["AI店員", d.ai_ten ? "on" : "off", d.ai_ten ? "動作中" : "停止"],
+        ["声（VOICEVOX）", d.koe ? "on" : "off", d.koe ? "動作中" : "停止"],
+        ["AI", d.ai === "動作中" ? "on" : (d.ai === "準備中" ? "connecting" : "off"), d.ai],
+        ["Bluetooth", "on", "動作中"],
+      ];
+      el.dousaJotai.innerHTML = jotai.map(function(j){
+        return '<span class="pill pill-' + j[1] + '">' + esc(j[0]) + '：' + esc(j[2]) + '</span>';
+      }).join("");
+    }
     var ondo = res.pc_ondo;
     if(typeof ondo !== "number"){
       el.pcOndo.className = "pc-ondo";
