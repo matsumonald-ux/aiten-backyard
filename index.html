@@ -144,6 +144,13 @@
   .line-input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
   .editor-short{ min-height:80px; margin-top:0; font-family:inherit; font-size:15px; }
   .oshie-a{ font-size:14px; }
+  .pc-ondo{
+    margin:0; font-size:13.5px; padding:8px 12px; border-radius:10px;
+    background:var(--surface-2); color:var(--ink-muted);
+  }
+  .pc-ondo-good{ background:var(--good-bg); color:var(--good); }
+  .pc-ondo-warn{ background:var(--warn-bg); color:var(--warn); font-weight:500; }
+  .pc-ondo-bad{ background:var(--bad-bg); color:var(--bad); font-weight:700; }
   .log-tsugi{
     font-size:13.5px; color:var(--good); background:var(--good-bg);
     border-radius:8px; padding:6px 8px; margin-top:2px;
@@ -266,7 +273,8 @@
       <div class="tile-label">人感センサーの反応回数</div>
     </div>
   </section>
-  <button class="btn btn-ghost btn-block" id="refreshStatsBtn" disabled>統計を更新する</button>
+  <p id="pcOndo" class="pc-ondo">パソコン本体の温度：—（接続すると表示します。外の気温ではありません）</p>
+  <button class="btn btn-ghost btn-block" id="refreshStatsBtn" disabled>統計と温度を更新する</button>
 
   <details class="card" open>
     <summary>会話ログ（直近20件）</summary>
@@ -334,6 +342,7 @@
     uaInfo: document.getElementById("uaInfo"),
     raiten: document.getElementById("raitenValue"),
     ninkan: document.getElementById("ninkanValue"),
+    pcOndo: document.getElementById("pcOndo"),
     refreshStatsBtn: document.getElementById("refreshStatsBtn"),
     loadKaiwaBtn: document.getElementById("loadKaiwaBtn"),
     kaiwaList: document.getElementById("kaiwaList"),
@@ -450,8 +459,7 @@
             kotowarareta_error = new Error(kakunin.error || "パソコンに断られました");
             break;
           }
-          el.raiten.textContent = kakunin.tokei.raiten_kaisuu;
-          el.ninkan.textContent = kakunin.tokei.ninkan_kaisuu;
+          tokeiWoHyouji(kakunin);
           junbi_seikou = true;
         }catch(e){
           saigo_no_error = e;
@@ -572,6 +580,24 @@
       if(device && device.gatt.connected){ device.gatt.disconnect(); }
       throw new Error("通信が詰まりました。もう一度「Bluetoothで接続する」を押してください。");
     }
+  }
+
+  // 統計とパソコン本体の温度を表示する（温度は外の気温ではなく、箱の中で熱がこもっていないかを見るためのもの）
+  function tokeiWoHyouji(res){
+    el.raiten.textContent = res.tokei.raiten_kaisuu;
+    el.ninkan.textContent = res.tokei.ninkan_kaisuu;
+    var ondo = res.pc_ondo;
+    if(typeof ondo !== "number"){
+      el.pcOndo.className = "pc-ondo";
+      el.pcOndo.textContent = "パソコン本体の温度：読み取れませんでした";
+      return;
+    }
+    var jotai, cls;
+    if(ondo >= 90){ jotai = "危険・すぐ冷やしてください"; cls = "pc-ondo pc-ondo-bad"; }
+    else if(ondo >= 80){ jotai = "注意・熱がこもっています"; cls = "pc-ondo pc-ondo-warn"; }
+    else { jotai = "正常"; cls = "pc-ondo pc-ondo-good"; }
+    el.pcOndo.className = cls;
+    el.pcOndo.textContent = "パソコン本体の温度：" + ondo.toFixed(0) + "℃（" + jotai + "）※外の気温ではありません";
   }
 
   function fmtToki(toki){
@@ -725,10 +751,7 @@
     setBusy(true);
     try{
       var res = await sendCommand({ cmd: "tokei" });
-      if(res.ok){
-        el.raiten.textContent = res.tokei.raiten_kaisuu;
-        el.ninkan.textContent = res.tokei.ninkan_kaisuu;
-      } else { showError(res.error || "取得に失敗しました"); }
+      if(res.ok){ tokeiWoHyouji(res); } else { showError(res.error || "取得に失敗しました"); }
     }catch(e){ showError(e.message); }
     setBusy(false);
   });
