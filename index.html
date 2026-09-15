@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI店員バックヤード</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#E1690A">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+  :root{
+    --bg:#FBF7F1;
+    --surface:#FFFFFF;
+    --surface-2:#F4EADC;
+    --ink:#2B2320;
+    --ink-muted:#7A6B5E;
+    --border:#E6D9C7;
+    --accent:#E1690A;
+    --accent-ink:#FFFFFF;
+    --good:#2E7D4F;
+    --good-bg:#E4F2E8;
+    --warn:#9C6B12;
+    --warn-bg:#F6ECD8;
+    --bad:#AD2E22;
+    --bad-bg:#F8E6E2;
+    --shadow: 0 1px 2px rgba(43,35,32,0.06), 0 4px 14px rgba(43,35,32,0.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#1B1512;
+      --surface:#241C18;
+      --surface-2:#2D241E;
+      --ink:#F3E9DE;
+      --ink-muted:#B8A897;
+      --border:#3C3128;
+      --accent:#FF9640;
+      --accent-ink:#241C18;
+      --good:#7FD19E;
+      --good-bg:#243329;
+      --warn:#E8B860;
+      --warn-bg:#332B1C;
+      --bad:#FF8A7A;
+      --bad-bg:#3A241F;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#1B1512;
+    --surface:#241C18;
+    --surface-2:#2D241E;
+    --ink:#F3E9DE;
+    --ink-muted:#B8A897;
+    --border:#3C3128;
+    --accent:#FF9640;
+    --accent-ink:#241C18;
+    --good:#7FD19E;
+    --good-bg:#243329;
+    --warn:#E8B860;
+    --warn-bg:#332B1C;
+    --bad:#FF8A7A;
+    --bad-bg:#3A241F;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.35);
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Noto Sans JP","Hiragino Sans",sans-serif;
+    line-height:1.7;
+  }
+  .page{
+    max-width:640px;
+    margin:0 auto;
+    padding:28px 18px 60px;
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+  }
+  h1,h2{ font-family:"Kiwi Maru","Hiragino Mincho ProN",serif; font-weight:500; text-wrap:balance; margin:0; }
+  .eyebrow{
+    font-size:12px;
+    letter-spacing:.08em;
+    color:var(--ink-muted);
+    font-weight:500;
+  }
+  header.masthead{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:22px 20px;
+    box-shadow:var(--shadow);
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  header.masthead h1{ font-size:26px; }
+  .sub{ margin:0; color:var(--ink-muted); font-size:14px; max-width:60ch; }
+  .status-row{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:4px; }
+  .pill{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:13px; font-weight:500;
+    padding:5px 12px; border-radius:999px;
+    border:1px solid transparent;
+  }
+  .pill-off{ background:var(--bad-bg); color:var(--bad); }
+  .pill-connecting{ background:var(--warn-bg); color:var(--warn); }
+  .pill-on{ background:var(--good-bg); color:var(--good); }
+
+  .btn{
+    font:inherit; font-size:14px; font-weight:500;
+    border-radius:10px; padding:10px 16px;
+    border:1px solid var(--border);
+    background:var(--surface-2); color:var(--ink);
+    cursor:pointer;
+  }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+  .btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .btn-accent{ background:var(--accent); color:var(--accent-ink); border-color:transparent; }
+  .btn-ghost{ background:transparent; }
+  .btn-block{ width:100%; }
+  .btn-row{ display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+  .pin-row{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+  .pin-row label{ font-size:13px; color:var(--ink-muted); }
+  .pin-input{
+    font:inherit; font-size:16px; letter-spacing:.2em; width:9em; max-width:100%;
+    padding:8px 12px; border-radius:10px;
+    border:1px solid var(--border); background:var(--bg); color:var(--ink);
+  }
+  .pin-input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .error-msg{
+    margin:0; font-size:13px; color:var(--bad);
+    background:var(--bad-bg); border-radius:10px; padding:10px 12px;
+  }
+  .saved-msg{ margin:8px 0 0; font-size:13px; color:var(--good); }
+
+  .stats-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .tile{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:18px 16px; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .tile-value{
+    font-size:32px; font-weight:700; font-variant-numeric:tabular-nums;
+    font-family:"Kiwi Maru",serif;
+  }
+  .tile-label{ font-size:12.5px; color:var(--ink-muted); }
+
+  details.card{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:16px 18px; box-shadow:var(--shadow);
+  }
+  details.card summary{
+    font-family:"Kiwi Maru",serif; font-size:17px; cursor:pointer;
+    list-style:none; display:flex; align-items:center; justify-content:space-between;
+  }
+  details.card summary::-webkit-details-marker{ display:none; }
+  details.card summary::after{ content:"+"; color:var(--ink-muted); font-family:"Noto Sans JP",sans-serif; }
+  details.card[open] summary::after{ content:"−"; }
+  details.card .hint{ font-size:13px; color:var(--ink-muted); margin:10px 0 0; }
+
+  .editor{
+    width:100%; margin-top:12px; min-height:140px;
+    font-family:ui-monospace,"SFMono-Regular",Consolas,monospace;
+    font-size:13px; line-height:1.6;
+    background:var(--bg); color:var(--ink);
+    border:1px solid var(--border); border-radius:10px; padding:10px;
+    resize:vertical;
+  }
+  .editor:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .log-list{ margin-top:12px; display:flex; flex-direction:column; gap:10px; }
+  .log-item{
+    border:1px solid var(--border); border-radius:12px; padding:10px 12px;
+    background:var(--surface-2);
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .log-head{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-muted); }
+  .badge{
+    font-size:11px; font-weight:500; padding:2px 8px; border-radius:999px;
+    background:var(--surface); border:1px solid var(--border);
+  }
+  .badge-ai{ color:var(--accent); border-color:var(--accent); }
+  .log-q{ font-size:14px; }
+  .log-q::before{ content:"客: "; color:var(--ink-muted); }
+  .log-a{ font-size:14px; }
+  .log-a::before{ content:"AI: "; color:var(--ink-muted); }
+  .empty{ margin:0; font-size:13px; color:var(--ink-muted); }
+
+  footer.foot{ font-size:12px; color:var(--ink-muted); display:flex; flex-direction:column; gap:6px; }
+
+  .debug-card{
+    background:var(--surface-2); border:1px dashed var(--border); border-radius:14px;
+    padding:12px 14px;
+  }
+  .debug-head{ font-size:12.5px; font-weight:500; color:var(--ink-muted); margin-bottom:8px; }
+  .debug-log{
+    font-family:ui-monospace,"SFMono-Regular",Consolas,monospace;
+    font-size:12px; line-height:1.6; color:var(--ink);
+    background:var(--surface); border:1px solid var(--border); border-radius:8px;
+    padding:8px 10px; max-height:160px; overflow-y:auto; overflow-wrap:anywhere;
+  }
+  .debug-ua{ font-size:11px; color:var(--ink-muted); margin-top:6px; overflow-wrap:anywhere; }
+
+  @media (max-width:420px){
+    header.masthead h1{ font-size:22px; }
+    .tile-value{ font-size:26px; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; transition-duration:0.001ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="masthead">
+    <div class="eyebrow">無人販売棚 みかんスタンド</div>
+    <h1>AI店員バックヤード</h1>
+    <p class="sub">スマホから、AI店員「aiten」とBluetoothでつながる管理画面です。やり取りはBluetoothだけで行います。</p>
+    <div class="pin-row">
+      <label for="pinInput">暗証番号</label>
+      <input id="pinInput" class="pin-input" type="password" inputmode="numeric" autocomplete="off" maxlength="16">
+    </div>
+    <div class="status-row">
+      <span id="statusPill" class="pill pill-off">● 未接続</span>
+      <button id="connectBtn" class="btn btn-accent">Bluetoothで接続する</button>
+    </div>
+    <p id="errorMsg" class="error-msg" hidden></p>
+  </header>
+
+  <section class="debug-card">
+    <div class="debug-head">動作ログ（うまくいかないとき、ここに出る文字をそのまま教えてください）</div>
+    <div id="debugLog" class="debug-log"></div>
+    <div id="uaInfo" class="debug-ua"></div>
+  </section>
+
+  <section class="stats-row" aria-label="来店統計">
+    <div class="tile">
+      <div class="tile-value" id="raitenValue">—</div>
+      <div class="tile-label">来店回数（AI店員の起動回数）</div>
+    </div>
+    <div class="tile">
+      <div class="tile-value" id="ninkanValue">—</div>
+      <div class="tile-label">人感センサーの反応回数</div>
+    </div>
+  </section>
+  <button class="btn btn-ghost btn-block" id="refreshStatsBtn" disabled>統計を更新する</button>
+
+  <details class="card" open>
+    <summary>会話ログ（直近20件）</summary>
+    <button class="btn btn-ghost" id="loadKaiwaBtn" disabled style="margin-top:12px;">読み込む</button>
+    <div id="kaiwaList" class="log-list"><p class="empty">まだ読み込んでいません。</p></div>
+  </details>
+
+  <details class="card">
+    <summary>答えられなかった質問（直近20件）</summary>
+    <button class="btn btn-ghost" id="loadMikaitouBtn" disabled style="margin-top:12px;">読み込む</button>
+    <div id="mikaitouList" class="log-list"><p class="empty">まだ読み込んでいません。</p></div>
+  </details>
+
+  <details class="card">
+    <summary>商品データ（shohin.txt）</summary>
+    <p class="hint">みかんの価格や産地などの情報です。書き換えて保存すると、AI店員が答える内容が変わります。</p>
+    <textarea id="shohinText" class="editor" disabled placeholder="「読み込む」を押すと、今の内容が表示されます"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="loadShohinBtn" disabled>読み込む</button>
+      <button class="btn btn-accent" id="saveShohinBtn" disabled>保存する（上書き）</button>
+    </div>
+    <p id="shohinSaved" class="saved-msg" hidden>保存しました。</p>
+  </details>
+
+  <details class="card">
+    <summary>定型文（kotae.txt）</summary>
+    <p class="hint">挨拶や、値引き・返品を断る文章などです。1行に「合言葉=文章」の形で書きます。</p>
+    <textarea id="kotaeText" class="editor" disabled placeholder="「読み込む」を押すと、今の内容が表示されます"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-ghost" id="loadKotaeBtn" disabled>読み込む</button>
+      <button class="btn btn-accent" id="saveKotaeBtn" disabled>保存する（上書き）</button>
+    </div>
+    <p id="kotaeSaved" class="saved-msg" hidden>保存しました。</p>
+  </details>
+
+  <footer class="foot">
+    <p>この画面はAndroidのChromeブラウザでのみ動作します（Web Bluetooth機能を使用）。iPhoneのSafariでは接続できません。</p>
+    <p>この画面を最初に開くとき（と更新するとき）だけインターネットを使います。一度開けば、ネットが無い場所でも開けます。パソコンとのやり取りはすべてBluetooth（近距離無線）だけで行い、パソコンはインターネットに接続しません。パソコン側で「aiten」のBluetoothが起動している必要があります。</p>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var SERVICE_UUID = "e65cc57c-74d0-46d8-84f8-30063be80225";
+  var RX_UUID = "2c212b23-63ad-4d4b-9821-e1de4c99d22f";
+  var TX_UUID = "8c1b1e5e-506e-4047-b954-107915557fa5";
+  var CHUNK = 20;
+
+  var el = {
+    connectBtn: document.getElementById("connectBtn"),
+    pinInput: document.getElementById("pinInput"),
+    statusPill: document.getElementById("statusPill"),
+    errorMsg: document.getElementById("errorMsg"),
+    debugLog: document.getElementById("debugLog"),
+    uaInfo: document.getElementById("uaInfo"),
+    raiten: document.getElementById("raitenValue"),
+    ninkan: document.getElementById("ninkanValue"),
+    refreshStatsBtn: document.getElementById("refreshStatsBtn"),
+    loadKaiwaBtn: document.getElementById("loadKaiwaBtn"),
+    kaiwaList: document.getElementById("kaiwaList"),
+    loadMikaitouBtn: document.getElementById("loadMikaitouBtn"),
+    mikaitouList: document.getElementById("mikaitouList"),
+    shohinText: document.getElementById("shohinText"),
+    loadShohinBtn: document.getElementById("loadShohinBtn"),
+    saveShohinBtn: document.getElementById("saveShohinBtn"),
+    shohinSaved: document.getElementById("shohinSaved"),
+    kotaeText: document.getElementById("kotaeText"),
+    loadKotaeBtn: document.getElementById("loadKotaeBtn"),
+    saveKotaeBtn: document.getElementById("saveKotaeBtn"),
+    kotaeSaved: document.getElementById("kotaeSaved"),
+  };
+
+  var rxChar = null, txChar = null, device = null;
+  var connected = false, busy = false;
+
+  var actionButtons = [
+    el.refreshStatsBtn, el.loadKaiwaBtn, el.loadMikaitouBtn,
+    el.loadShohinBtn, el.saveShohinBtn, el.loadKotaeBtn, el.saveKotaeBtn
+  ];
+
+  function showError(msg){
+    el.errorMsg.textContent = msg;
+    el.errorMsg.hidden = false;
+  }
+  function clearError(){ el.errorMsg.hidden = true; }
+
+  function sleep(ms){
+    return new Promise(function(resolve){ setTimeout(resolve, ms); });
+  }
+
+  async function connectWithRetry(dev){
+    try{
+      return await dev.gatt.connect();
+    }catch(e){
+      log("1回目の接続に失敗（" + (e && e.message ? e.message : e) + "）。少し待って、もう一度試します…");
+      await sleep(1000);
+      return await dev.gatt.connect();
+    }
+  }
+
+  function log(msg){
+    var t = new Date().toLocaleTimeString("ja-JP");
+    var line = document.createElement("div");
+    line.textContent = "[" + t + "] " + msg;
+    el.debugLog.appendChild(line);
+    el.debugLog.scrollTop = el.debugLog.scrollHeight;
+  }
+
+  function setStatus(state){
+    if(state === "off"){
+      el.statusPill.className = "pill pill-off";
+      el.statusPill.textContent = "● 未接続";
+      el.connectBtn.textContent = "Bluetoothで接続する";
+      el.connectBtn.disabled = false;
+    } else if(state === "connecting"){
+      el.statusPill.className = "pill pill-connecting";
+      el.statusPill.textContent = "● 接続中…";
+      el.connectBtn.disabled = true;
+    } else {
+      el.statusPill.className = "pill pill-on";
+      el.statusPill.textContent = "● 接続ずみ（aiten）";
+      el.connectBtn.textContent = "切断する";
+      el.connectBtn.disabled = false;
+    }
+  }
+
+  function syncButtons(){
+    actionButtons.forEach(function(b){ b.disabled = !connected || busy; });
+  }
+
+  function setBusy(v){ busy = v; syncButtons(); }
+
+  async function connect(){
+    clearError();
+    log("接続ボタンが押されました");
+    if(!el.pinInput.value){
+      showError("先に暗証番号を入力してください。");
+      el.pinInput.focus();
+      return;
+    }
+    if(!("bluetooth" in navigator)){
+      log("この画面ではnavigator.bluetoothが使えません（ブラウザの制限の可能性）");
+      showError("この端末・ブラウザはWeb Bluetoothに対応していません。AndroidのChromeで開いてください。");
+      return;
+    }
+    try{
+      setStatus("connecting");
+      log("機器の選択画面を呼び出しています…（画面下から出てくるはずです）");
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [SERVICE_UUID] }],
+        optionalServices: [SERVICE_UUID]
+      });
+      log("機器を選びました: " + (device.name || "(名前なし)"));
+      device.addEventListener("gattserverdisconnected", onDisconnected);
+
+      // 繋がった直後の1回目はやり取りが詰まりやすいため、実際にお客様がボタンを押す前に
+      // 裏側で試しておき、安定するまで自動でやり直す(最大4回)
+      var junbi_seikou = false;
+      var saigo_no_error = null;
+      var kotowarareta_error = null;
+      for(var kaime = 0; kaime < 6 && !junbi_seikou; kaime++){
+        try{
+          await setupGatt(device);
+          log("接続が落ち着くのを待っています…");
+          await sleep(2000);
+          log("接続の確認をしています…");
+          var kakunin = await sendCommand({ cmd: "tokei" });
+          if(!kakunin.ok){
+            // 暗証番号の間違いなどは、やり直しても直らない（ロックまでの回数を無駄に使う）ので、ここで止める
+            kotowarareta_error = new Error(kakunin.error || "パソコンに断られました");
+            break;
+          }
+          el.raiten.textContent = kakunin.tokei.raiten_kaisuu;
+          el.ninkan.textContent = kakunin.tokei.ninkan_kaisuu;
+          junbi_seikou = true;
+        }catch(e){
+          saigo_no_error = e;
+          log((kaime + 1) + "回目の確認がうまくいきませんでした。もう一度試します…");
+          await sleep(1500);
+        }
+      }
+      if(kotowarareta_error){
+        if(device.gatt.connected){ device.gatt.disconnect(); }
+        throw kotowarareta_error;
+      }
+      if(!junbi_seikou){ throw saigo_no_error || new Error("接続を安定させられませんでした"); }
+
+      connected = true;
+      setStatus("on");
+      syncButtons();
+      log("接続が完了しました。");
+    }catch(e){
+      connected = false;
+      setStatus("off");
+      syncButtons();
+      log("エラーが発生しました: " + (e && e.message ? e.message : e) + (e && e.name ? "（種類: " + e.name + "）" : ""));
+      showError("接続できませんでした: " + (e && e.message ? e.message : e));
+    }
+  }
+
+  async function setupGatt(dev){
+    log("機器に接続しています…");
+    var server = await connectWithRetry(dev);
+    await sleep(300);
+    log("サービスを探しています（全部のサービスを取得中）…");
+    var services = await server.getPrimaryServices();
+    log("サービス数: " + services.length);
+    var service = services.find(function(s){ return s.uuid === SERVICE_UUID; });
+    if(!service){ throw new Error("目的のサービスが見つかりませんでした"); }
+    log("目的のサービスが見つかりました。キャラクタリスティックを探しています（全部取得中）…");
+    var chars = await service.getCharacteristics();
+    log("キャラクタリスティック数: " + chars.length);
+    rxChar = chars.find(function(c){ return c.uuid === RX_UUID; });
+    txChar = chars.find(function(c){ return c.uuid === TX_UUID; });
+    if(!rxChar || !txChar){ throw new Error("必要なキャラクタリスティックが見つかりませんでした"); }
+  }
+
+  function disconnect(){
+    log("切断ボタンが押されました");
+    if(device && device.gatt.connected){ device.gatt.disconnect(); }
+  }
+
+  function onDisconnected(){
+    log("接続が切れました");
+    connected = false;
+    rxChar = null; txChar = null;
+    setStatus("off");
+    syncButtons();
+  }
+
+  // パソコン側に返事の準備ができるまで、少し待ちながら「読み取り」を繰り返す
+  // Androidの癖で、読み書きの返事がいつまでも来ないことがあるため、
+  // 「○秒待っても返事がなければ、諦めて失敗にする」という制限時間を付ける
+  function seigen_jikan_tsuki(promise, ms, setsumei){
+    return new Promise(function(resolve, reject){
+      var owatta = false;
+      var timer = setTimeout(function(){
+        if(owatta) return;
+        owatta = true;
+        reject(new Error(setsumei + "が" + (ms / 1000) + "秒たっても終わりませんでした"));
+      }, ms);
+      promise.then(function(v){
+        if(owatta) return;
+        owatta = true;
+        clearTimeout(timer);
+        resolve(v);
+      }, function(e){
+        if(owatta) return;
+        owatta = true;
+        clearTimeout(timer);
+        reject(e);
+      });
+    });
+  }
+
+  async function yomitori_kurikaeshi(saidai_kaisuu, machi_ms){
+    // 長い返事は小分け(ページ)で届くため、改行が来るまでつなぎ合わせる
+    var tameta = [];
+    for(var i = 0; i < saidai_kaisuu; i++){
+      await sleep(machi_ms);
+      var value = await seigen_jikan_tsuki(txChar.readValue(), 1500, "読み取り");
+      if(value.byteLength > 0){
+        log("読み取り: " + value.byteLength + "バイト受信（合計" + (tameta.length + value.byteLength) + "バイト）");
+        for(var j = 0; j < value.byteLength; j++){ tameta.push(value.getUint8(j)); }
+        var nl = tameta.indexOf(10); // "\n"
+        if(nl !== -1){
+          var text = new TextDecoder("utf-8").decode(new Uint8Array(tameta.slice(0, nl)));
+          return JSON.parse(text);
+        }
+      }
+    }
+    throw new Error("パソコンからの返事がありませんでした");
+  }
+
+  async function sendCommand(cmdObj){
+    if(!rxChar || !txChar){ throw new Error("接続されていません"); }
+    try{
+      var meirei = Object.assign({}, cmdObj, { pin: el.pinInput.value });
+      var bytes = new TextEncoder().encode(JSON.stringify(meirei) + "\n");
+      for(var i = 0; i < bytes.length; i += CHUNK){
+        var kakera = bytes.slice(i, i + CHUNK);
+        await seigen_jikan_tsuki(rxChar.writeValue(kakera), 3000, "書き込み");
+        await sleep(30);
+      }
+      return await yomitori_kurikaeshi(20, 250);
+    }catch(e){
+      // 通信が詰まると繋ぎ直すまで直らないことがあるため、失敗したら一度切断しておく
+      log("通信が詰まりました（" + (e && e.message ? e.message : e) + "）。切断します。");
+      if(device && device.gatt.connected){ device.gatt.disconnect(); }
+      throw new Error("通信が詰まりました。もう一度「Bluetoothで接続する」を押してください。");
+    }
+  }
+
+  function fmtToki(toki){
+    if(!toki) return "";
+    return toki.slice(0, 16).replace("T", " ");
+  }
+
+  function renderKaiwa(list){
+    if(!list.length){
+      el.kaiwaList.innerHTML = '<p class="empty">まだ記録がありません。</p>';
+      return;
+    }
+    var html = list.slice().reverse().map(function(item){
+      var badgeClass = item.keiro === "AI" ? "badge badge-ai" : "badge";
+      return (
+        '<div class="log-item">' +
+          '<div class="log-head"><span>' + fmtToki(item.toki) + '</span>' +
+            '<span class="' + badgeClass + '">' + esc(item.keiro || "") + '</span></div>' +
+          '<div class="log-q">' + esc(item.shitsumon || "") + '</div>' +
+          '<div class="log-a">' + esc(item.kotae || "") + '</div>' +
+        '</div>'
+      );
+    }).join("");
+    el.kaiwaList.innerHTML = html;
+  }
+
+  function renderMikaitou(list){
+    if(!list.length){
+      el.mikaitouList.innerHTML = '<p class="empty">まだ記録がありません。</p>';
+      return;
+    }
+    el.mikaitouList.innerHTML = list.slice().reverse().map(function(q){
+      return '<div class="log-item"><div class="log-q">' + esc(q) + '</div></div>';
+    }).join("");
+  }
+
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+    });
+  }
+
+  function showSaved(elm){
+    elm.hidden = false;
+    setTimeout(function(){ elm.hidden = true; }, 3000);
+  }
+
+  el.connectBtn.addEventListener("click", function(){
+    if(connected){ disconnect(); } else { connect(); }
+  });
+
+  el.refreshStatsBtn.addEventListener("click", async function(){
+    clearError();
+    setBusy(true);
+    try{
+      var res = await sendCommand({ cmd: "tokei" });
+      if(res.ok){
+        el.raiten.textContent = res.tokei.raiten_kaisuu;
+        el.ninkan.textContent = res.tokei.ninkan_kaisuu;
+      } else { showError(res.error || "取得に失敗しました"); }
+    }catch(e){ showError(e.message); }
+    setBusy(false);
+  });
+
+  el.loadKaiwaBtn.addEventListener("click", async function(){
+    clearError();
+    setBusy(true);
+    try{
+      var res = await sendCommand({ cmd: "kaiwa_log" });
+      if(res.ok){ renderKaiwa(res.kaiwa_log || []); } else { showError(res.error || "取得に失敗しました"); }
+    }catch(e){ showError(e.message); }
+    setBusy(false);
+  });
+
+  el.loadMikaitouBtn.addEventListener("click", async function(){
+    clearError();
+    setBusy(true);
+    try{
+      var res = await sendCommand({ cmd: "mikaitou" });
+      if(res.ok){ renderMikaitou(res.mikaitou || []); } else { showError(res.error || "取得に失敗しました"); }
+    }catch(e){ showError(e.message); }
+    setBusy(false);
+  });
+
+  el.loadShohinBtn.addEventListener("click", async function(){
+    clearError();
+    setBusy(true);
+    try{
+      var res = await sendCommand({ cmd: "get_shohin" });
+      if(res.ok){ el.shohinText.value = res.shohin; } else { showError(res.error || "取得に失敗しました"); }
+    }catch(e){ showError(e.message); }
+    setBusy(false);
+  });
+
+  el.saveShohinBtn.addEventListener("click", async function(){
+    clearError();
+    if(!confirm("商品データを、今の内容で上書きします。よろしいですか？")) return;
+    setBusy(true);
+    try{
+      var res = await sendCommand({ cmd: "set_shohin", data: el.shohinText.value });
+      if(res.ok){ showSaved(el.shohinSaved); } else { showError(res.error || "保存に失敗しました"); }
+    }catch(e){ showError(e.message); }
+    setBusy(false);
+  });
+
+  el.loadKotaeBtn.addEventListener("click", async function(){
+    clearError();
+    setBusy(true);
+    try{
+      var res = await sendCommand({ cmd: "get_kotae" });
+      if(res.ok){ el.kotaeText.value = res.kotae; } else { showError(res.error || "取得に失敗しました"); }
+    }catch(e){ showError(e.message); }
+    setBusy(false);
+  });
+
+  el.saveKotaeBtn.addEventListener("click", async function(){
+    clearError();
+    if(!confirm("定型文を、今の内容で上書きします。よろしいですか？")) return;
+    setBusy(true);
+    try{
+      var res = await sendCommand({ cmd: "set_kotae", data: el.kotaeText.value });
+      if(res.ok){ showSaved(el.kotaeSaved); } else { showError(res.error || "保存に失敗しました"); }
+    }catch(e){ showError(e.message); }
+    setBusy(false);
+  });
+
+  window.addEventListener("error", function(ev){
+    log("ページ全体のエラー: " + ev.message);
+  });
+  window.addEventListener("unhandledrejection", function(ev){
+    log("処理中のエラー: " + (ev.reason && ev.reason.message ? ev.reason.message : ev.reason));
+  });
+
+  log("ページを読み込みました");
+  el.uaInfo.textContent = "ブラウザ情報: " + navigator.userAgent;
+  log("Bluetooth機能: " + (("bluetooth" in navigator) ? "あり" : "なし"));
+  if(!("bluetooth" in navigator)){
+    showError("この端末・ブラウザはWeb Bluetoothに対応していません。AndroidのChromeで開いてください。");
+  }
+  syncButtons();
+
+  // ネットが無い場所でも開けるように、画面をスマホに保存する仕組みを登録する（httpsのサイトでだけ動く）
+  if("serviceWorker" in navigator && window.isSecureContext){
+    navigator.serviceWorker.register("sw.js").then(function(){
+      log("オフライン用の保存の準備ができました");
+    }).catch(function(e){
+      log("オフライン用の保存に失敗しました: " + e.message);
+    });
+  }
+})();
+</script>
+</body>
+</html>

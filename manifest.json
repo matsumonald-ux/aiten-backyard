@@ -1,0 +1,14 @@
+{
+  "name": "AI店員バックヤード",
+  "short_name": "aiten管理",
+  "description": "無人販売棚のAI店員とBluetoothでつながる管理画面",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FBF7F1",
+  "theme_color": "#E1690A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
