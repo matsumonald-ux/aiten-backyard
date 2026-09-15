@@ -144,6 +144,10 @@
   .line-input:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
   .editor-short{ min-height:80px; margin-top:0; font-family:inherit; font-size:15px; }
   .oshie-a{ font-size:14px; }
+  .log-tsugi{
+    font-size:13.5px; color:var(--good); background:var(--good-bg);
+    border-radius:8px; padding:6px 8px; margin-top:2px;
+  }
 
   .error-msg{
     margin:0; font-size:13px; color:var(--bad);
@@ -267,6 +271,7 @@
   <details class="card" open>
     <summary>会話ログ（直近20件）</summary>
     <button class="btn btn-ghost" id="loadKaiwaBtn" disabled style="margin-top:12px;">読み込む</button>
+    <p id="kaiwaSaved" class="saved-msg" hidden></p>
     <div id="kaiwaList" class="log-list"><p class="empty">まだ読み込んでいません。</p></div>
   </details>
 
@@ -331,6 +336,7 @@
     refreshStatsBtn: document.getElementById("refreshStatsBtn"),
     loadKaiwaBtn: document.getElementById("loadKaiwaBtn"),
     kaiwaList: document.getElementById("kaiwaList"),
+    kaiwaSaved: document.getElementById("kaiwaSaved"),
     loadMikaitouBtn: document.getElementById("loadMikaitouBtn"),
     mikaitouList: document.getElementById("mikaitouList"),
     loadOshieBtn: document.getElementById("loadOshieBtn"),
@@ -589,6 +595,9 @@
             '<span class="' + badgeClass + '">' + esc(item.keiro || "") + '</span></div>' +
           '<div class="log-q">' + esc(item.shitsumon || "") + '</div>' +
           '<div class="log-a">' + esc(item.kotae || "") + '</div>' +
+          (item.tsugi_kotae
+            ? '<div class="log-tsugi">→ 次からの答え（' + esc(item.tsugi_keiro || "") + '）：' + esc(item.tsugi_kotae) + '</div>'
+            : '') +
           '<button class="btn btn-ghost btn-small naosu-btn">この答えを直す</button>' +
         '</div>'
       );
@@ -640,9 +649,14 @@
     try{
       var res = await sendCommand({ cmd: "add_oshie", kotoba: kotoba, kotae: kotae });
       if(res.ok){
-        form.remove();
         renderOshie(res.oshie || []);
-        itemEl.insertAdjacentHTML("beforeend", '<p class="saved-msg">教えました。次の質問から使われます。</p>');
+        el.kaiwaSaved.textContent = res.uwagaki
+          ? "同じキーワードの答えを上書きしました。次の質問から使われます。"
+          : "教えました。次の質問から使われます。";
+        // 「次からの答え」を表示し直すため、会話ログを読み込み直す
+        var res2 = await sendCommand({ cmd: "kaiwa_log" });
+        if(res2.ok){ renderKaiwa(res2.kaiwa_log || []); }
+        showSaved(el.kaiwaSaved);
       } else { showError(res.error || "保存に失敗しました"); }
     }catch(e){ showError(e.message); }
     setBusy(false);
