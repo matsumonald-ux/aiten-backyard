@@ -4,7 +4,7 @@
 // ネットに繋がる時は最新の画面を取りに行き、繋がらない時は保存しておいた画面を使う。
 // 画面を更新したら CACHE の名前の番号を1つ上げると、古い保存が消える。
 // ============================================
-const CACHE = "aiten-backyard-v3";
+const CACHE = "aiten-backyard-v4";
 const FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 const NET_MACHI_MS = 3000; // 電波が弱い時に待ちすぎないよう、この時間で保存版に切り替える
 

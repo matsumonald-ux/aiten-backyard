@@ -434,17 +434,15 @@
       log("機器を選びました: " + (device.name || "(名前なし)"));
       device.addEventListener("gattserverdisconnected", onDisconnected);
 
-      // 繋がった直後の1回目はやり取りが詰まりやすいため、実際にお客様がボタンを押す前に
-      // 裏側で試しておき、安定するまで自動でやり直す(最大4回)
+      // 接続したら、暗証番号の確認をかねて統計を1回読む。
+      // 電波の具合で失敗することもあるので、1回だけ自動でやり直す（暗証番号の間違いはやり直さない）
       var junbi_seikou = false;
       var saigo_no_error = null;
       var kotowarareta_error = null;
-      for(var kaime = 0; kaime < 6 && !junbi_seikou; kaime++){
+      for(var kaime = 0; kaime < 2 && !junbi_seikou; kaime++){
         try{
           await setupGatt(device);
-          log("接続が落ち着くのを待っています…");
-          await sleep(2000);
-          log("接続の確認をしています…");
+          log("暗証番号を確認しています…");
           var kakunin = await sendCommand({ cmd: "tokei" });
           if(!kakunin.ok){
             // 暗証番号の間違いなどは、やり直しても直らない（ロックまでの回数を無駄に使う）ので、ここで止める
@@ -456,8 +454,10 @@
           junbi_seikou = true;
         }catch(e){
           saigo_no_error = e;
-          log((kaime + 1) + "回目の確認がうまくいきませんでした。もう一度試します…");
-          await sleep(1500);
+          if(kaime === 0){
+            log("うまくいかなかったので、もう一度試します…");
+            await sleep(800);
+          }
         }
       }
       if(kotowarareta_error){
