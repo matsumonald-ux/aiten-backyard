@@ -174,6 +174,7 @@
     font-family:"Kiwi Maru",serif;
   }
   .tile-label{ font-size:12.5px; color:var(--ink-muted); }
+  .tile-sub{ font-size:11.5px; color:var(--ink-muted); min-height:1.2em; }
 
   details.card{
     background:var(--surface); border:1px solid var(--border); border-radius:16px;
@@ -268,10 +269,14 @@
     <div class="tile">
       <div class="tile-value" id="raitenValue">—</div>
       <div class="tile-label">来店回数（AI店員の起動回数）</div>
+      <div class="tile-sub" id="raitenKara"></div>
+      <button class="btn btn-ghost btn-small" id="resetRaitenBtn" disabled>0に戻す</button>
     </div>
     <div class="tile">
       <div class="tile-value" id="ninkanValue">—</div>
       <div class="tile-label">人感センサーの反応回数</div>
+      <div class="tile-sub" id="ninkanKara"></div>
+      <button class="btn btn-ghost btn-small" id="resetNinkanBtn" disabled>0に戻す</button>
     </div>
   </section>
   <p id="pcOndo" class="pc-ondo">パソコン本体の温度：—（接続すると表示します。外の気温ではありません）</p>
@@ -346,6 +351,10 @@
     raiten: document.getElementById("raitenValue"),
     ninkan: document.getElementById("ninkanValue"),
     pcOndo: document.getElementById("pcOndo"),
+    raitenKara: document.getElementById("raitenKara"),
+    ninkanKara: document.getElementById("ninkanKara"),
+    resetRaitenBtn: document.getElementById("resetRaitenBtn"),
+    resetNinkanBtn: document.getElementById("resetNinkanBtn"),
     refreshStatsBtn: document.getElementById("refreshStatsBtn"),
     loadKaiwaBtn: document.getElementById("loadKaiwaBtn"),
     kaiwaList: document.getElementById("kaiwaList"),
@@ -369,7 +378,8 @@
   var connected = false, busy = false;
 
   var actionButtons = [
-    el.refreshStatsBtn, el.loadKaiwaBtn, el.loadMikaitouBtn, el.loadOshieBtn,
+    el.refreshStatsBtn, el.resetRaitenBtn, el.resetNinkanBtn,
+    el.loadKaiwaBtn, el.loadMikaitouBtn, el.loadOshieBtn,
     el.loadShohinBtn, el.saveShohinBtn, el.loadKotaeBtn, el.saveKotaeBtn
   ];
 
@@ -590,6 +600,9 @@
   function tokeiWoHyouji(res){
     el.raiten.textContent = res.tokei.raiten_kaisuu;
     el.ninkan.textContent = res.tokei.ninkan_kaisuu;
+    // 0に戻した日時があれば「○○ から」と表示する（いつからの回数か分かるように）
+    el.raitenKara.textContent = res.tokei.raiten_kaisuu_reset_toki ? fmtToki(res.tokei.raiten_kaisuu_reset_toki) + " から" : "";
+    el.ninkanKara.textContent = res.tokei.ninkan_kaisuu_reset_toki ? fmtToki(res.tokei.ninkan_kaisuu_reset_toki) + " から" : "";
     var ondo = res.pc_ondo;
     if(typeof ondo !== "number"){
       el.pcOndo.className = "pc-ondo";
@@ -794,6 +807,20 @@
     }catch(e){ showError(e.message); }
     setBusy(false);
   });
+
+  async function tokeiWoResetsuru(koumoku, namae){
+    clearError();
+    if(!confirm(namae + "を0に戻します。元には戻せません。よろしいですか？")) return;
+    setBusy(true);
+    try{
+      var res = await sendCommand({ cmd: "reset_tokei", koumoku: koumoku });
+      if(res.ok){ tokeiWoHyouji(res); } else { showError(res.error || "0に戻せませんでした"); }
+    }catch(e){ showError(e.message); }
+    setBusy(false);
+  }
+
+  el.resetRaitenBtn.addEventListener("click", function(){ tokeiWoResetsuru("raiten_kaisuu", "来店回数"); });
+  el.resetNinkanBtn.addEventListener("click", function(){ tokeiWoResetsuru("ninkan_kaisuu", "人感センサーの反応回数"); });
 
   el.loadKaiwaBtn.addEventListener("click", async function(){
     clearError();
