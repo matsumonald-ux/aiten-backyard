@@ -148,6 +148,7 @@
     margin:0; font-size:13.5px; padding:8px 12px; border-radius:10px;
     background:var(--surface-2); color:var(--ink-muted);
   }
+  .log-mada{ font-size:13px; color:var(--warn); }
   .pc-ondo-good{ background:var(--good-bg); color:var(--good); }
   .pc-ondo-warn{ background:var(--warn-bg); color:var(--warn); font-weight:500; }
   .pc-ondo-bad{ background:var(--bad-bg); color:var(--bad); font-weight:700; }
@@ -285,7 +286,9 @@
 
   <details class="card">
     <summary>答えられなかった質問（直近20件）</summary>
+    <p class="hint">AIが「ご用意がありません」と答えた質問です。「答えを教える」で、次から答えられるようにできます。</p>
     <button class="btn btn-ghost" id="loadMikaitouBtn" disabled style="margin-top:12px;">読み込む</button>
+    <p id="mikaitouSaved" class="saved-msg" hidden></p>
     <div id="mikaitouList" class="log-list"><p class="empty">まだ読み込んでいません。</p></div>
   </details>
 
@@ -349,6 +352,7 @@
     kaiwaSaved: document.getElementById("kaiwaSaved"),
     loadMikaitouBtn: document.getElementById("loadMikaitouBtn"),
     mikaitouList: document.getElementById("mikaitouList"),
+    mikaitouSaved: document.getElementById("mikaitouSaved"),
     loadOshieBtn: document.getElementById("loadOshieBtn"),
     oshieList: document.getElementById("oshieList"),
     shohinText: document.getElementById("shohinText"),
@@ -631,9 +635,32 @@
     }).join("");
   }
 
-  function naosuFormWoHiraku(itemEl){
+  var saigo_no_mikaitou = [];
+
+  function renderMikaitou(list, tsugiList){
+    tsugiList = tsugiList || [];
+    saigo_no_mikaitou = list.map(function(q, i){ return { shitsumon: q, tsugi: tsugiList[i] }; }).reverse();
+    if(!saigo_no_mikaitou.length){
+      el.mikaitouList.innerHTML = '<p class="empty">まだ記録がありません。</p>';
+      return;
+    }
+    el.mikaitouList.innerHTML = saigo_no_mikaitou.map(function(item, i){
+      var tsugi = item.tsugi;
+      return (
+        '<div class="log-item" data-i="' + i + '">' +
+          '<div class="log-q">' + esc(item.shitsumon) + '</div>' +
+          (tsugi
+            ? '<div class="log-tsugi">→ 次からの答え（' + esc(tsugi.tsugi_keiro || "") + '）：' + esc(tsugi.tsugi_kotae) + '</div>'
+            : '<div class="log-mada">まだ答えを教えていません</div>') +
+          '<button class="btn btn-ghost btn-small naosu-btn">' + (tsugi ? "答えを直す" : "答えを教える") + '</button>' +
+        '</div>'
+      );
+    }).join("");
+  }
+
+  // 「答えを教える」入力欄を開く（会話ログ・答えられなかった質問で共通）
+  function oshieruFormWoHiraku(itemEl, shitsumon, kotae){
     if(itemEl.querySelector(".naosu-form")) return;
-    var item = saigo_no_kaiwa[Number(itemEl.dataset.i)];
     var form = document.createElement("div");
     form.className = "naosu-form";
     form.innerHTML =
@@ -645,19 +672,15 @@
         '<button class="btn btn-accent oshieru-btn">教える（保存）</button>' +
         '<button class="btn btn-ghost yameru-btn">やめる</button>' +
       '</div>';
-    form.querySelector(".kotoba-input").value = item.shitsumon || "";
-    form.querySelector(".kotae-input").value = item.kotae || "";
+    form.querySelector(".kotoba-input").value = shitsumon || "";
+    form.querySelector(".kotae-input").value = kotae || "";
     itemEl.appendChild(form);
     form.querySelector(".kotoba-input").focus();
   }
 
-  el.kaiwaList.addEventListener("click", async function(ev){
-    var itemEl = ev.target.closest(".log-item");
-    if(!itemEl) return;
-    if(ev.target.classList.contains("naosu-btn")){
-      naosuFormWoHiraku(itemEl);
-      return;
-    }
+  // 入力欄の「やめる」「教える（保存）」を処理する（会話ログ・答えられなかった質問で共通）。
+  // 教えたら、sakiEl にお知らせを出し、yomikominaoshi() で一覧を読み込み直して「次からの答え」を表示し直す
+  async function oshieruBotan(ev, itemEl, sakiEl, yomikominaoshi){
     if(ev.target.classList.contains("yameru-btn")){
       itemEl.querySelector(".naosu-form").remove();
       return;
@@ -677,16 +700,42 @@
       var res = await sendCommand({ cmd: "add_oshie", kotoba: kotoba, kotae: kotae });
       if(res.ok){
         renderOshie(res.oshie || []);
-        el.kaiwaSaved.textContent = res.uwagaki
+        sakiEl.textContent = res.uwagaki
           ? "同じキーワードの答えを上書きしました。次の質問から使われます。"
           : "教えました。次の質問から使われます。";
-        // 「次からの答え」を表示し直すため、会話ログを読み込み直す
-        var res2 = await sendCommand({ cmd: "kaiwa_log" });
-        if(res2.ok){ renderKaiwa(res2.kaiwa_log || []); }
-        showSaved(el.kaiwaSaved);
+        await yomikominaoshi();
+        showSaved(sakiEl);
       } else { showError(res.error || "保存に失敗しました"); }
     }catch(e){ showError(e.message); }
     setBusy(false);
+  }
+
+  el.kaiwaList.addEventListener("click", async function(ev){
+    var itemEl = ev.target.closest(".log-item");
+    if(!itemEl) return;
+    if(ev.target.classList.contains("naosu-btn")){
+      var item = saigo_no_kaiwa[Number(itemEl.dataset.i)];
+      oshieruFormWoHiraku(itemEl, item.shitsumon, item.kotae);
+      return;
+    }
+    await oshieruBotan(ev, itemEl, el.kaiwaSaved, async function(){
+      var res2 = await sendCommand({ cmd: "kaiwa_log" });
+      if(res2.ok){ renderKaiwa(res2.kaiwa_log || []); }
+    });
+  });
+
+  el.mikaitouList.addEventListener("click", async function(ev){
+    var itemEl = ev.target.closest(".log-item");
+    if(!itemEl) return;
+    if(ev.target.classList.contains("naosu-btn")){
+      var item = saigo_no_mikaitou[Number(itemEl.dataset.i)];
+      oshieruFormWoHiraku(itemEl, item.shitsumon, item.tsugi ? item.tsugi.tsugi_kotae : "");
+      return;
+    }
+    await oshieruBotan(ev, itemEl, el.mikaitouSaved, async function(){
+      var res2 = await sendCommand({ cmd: "mikaitou" });
+      if(res2.ok){ renderMikaitou(res2.mikaitou || [], res2.mikaitou_tsugi || []); }
+    });
   });
 
   function renderOshie(list){
@@ -720,16 +769,6 @@
     }catch(e){ showError(e.message); }
     setBusy(false);
   });
-
-  function renderMikaitou(list){
-    if(!list.length){
-      el.mikaitouList.innerHTML = '<p class="empty">まだ記録がありません。</p>';
-      return;
-    }
-    el.mikaitouList.innerHTML = list.slice().reverse().map(function(q){
-      return '<div class="log-item"><div class="log-q">' + esc(q) + '</div></div>';
-    }).join("");
-  }
 
   function esc(s){
     return String(s).replace(/[&<>"']/g, function(c){
@@ -771,7 +810,7 @@
     setBusy(true);
     try{
       var res = await sendCommand({ cmd: "mikaitou" });
-      if(res.ok){ renderMikaitou(res.mikaitou || []); } else { showError(res.error || "取得に失敗しました"); }
+      if(res.ok){ renderMikaitou(res.mikaitou || [], res.mikaitou_tsugi || []); } else { showError(res.error || "取得に失敗しました"); }
     }catch(e){ showError(e.message); }
     setBusy(false);
   });
