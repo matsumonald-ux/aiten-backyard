@@ -162,7 +162,7 @@
     margin:0; font-size:13px; color:var(--bad);
     background:var(--bad-bg); border-radius:10px; padding:10px 12px;
   }
-  .saved-msg{ margin:8px 0 0; font-size:13px; color:var(--good); }
+  .saved-msg{ margin:8px 0 0; font-size:13px; color:var(--good); white-space:pre-line; }
 
   .stats-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .tile{
@@ -301,9 +301,13 @@
 
   <details class="card">
     <summary>教えた答え（登録済み）</summary>
-    <p class="hint">会話ログの「この答えを直す」から教えた答えです。キーワードを含む質問には、AIに聞かずにこの答えを返します（緊急・値引き・返品のお断りが優先されます）。</p>
-    <button class="btn btn-ghost" id="loadOshieBtn" disabled style="margin-top:12px;">読み込む</button>
+    <p class="hint">会話ログや答えられなかった質問から教えた答えです。パソコンに件数の上限なしでたまっていきます。キーワードを含む質問には、AIに聞かずにこの答えを返します（緊急・値引き・返品のお断りが優先されます）。いくつも当てはまる時は、いちばん長く一致したキーワードの答えを使います。</p>
+    <input id="oshieSagasu" class="line-input" type="search" placeholder="探す言葉（空のままなら全部）" style="margin-top:12px;">
+    <button class="btn btn-ghost" id="loadOshieBtn" disabled style="margin-top:10px;">読み込む／探す</button>
+    <p id="oshieKensuu" class="hint" hidden></p>
+    <p id="oshieSaved" class="saved-msg" hidden></p>
     <div id="oshieList" class="log-list"><p class="empty">まだ読み込んでいません。</p></div>
+    <button class="btn btn-ghost btn-block" id="motoOshieBtn" disabled hidden style="margin-top:10px;">もっと見る（次の20件）</button>
   </details>
 
   <details class="card">
@@ -367,6 +371,10 @@
     mikaitouSaved: document.getElementById("mikaitouSaved"),
     loadOshieBtn: document.getElementById("loadOshieBtn"),
     oshieList: document.getElementById("oshieList"),
+    oshieSagasu: document.getElementById("oshieSagasu"),
+    oshieKensuu: document.getElementById("oshieKensuu"),
+    oshieSaved: document.getElementById("oshieSaved"),
+    motoOshieBtn: document.getElementById("motoOshieBtn"),
     shohinText: document.getElementById("shohinText"),
     loadShohinBtn: document.getElementById("loadShohinBtn"),
     saveShohinBtn: document.getElementById("saveShohinBtn"),
@@ -382,7 +390,7 @@
 
   var actionButtons = [
     el.refreshStatsBtn, el.resetRaitenBtn, el.resetNinkanBtn,
-    el.loadKaiwaBtn, el.loadMikaitouBtn, el.loadOshieBtn,
+    el.loadKaiwaBtn, el.loadMikaitouBtn, el.loadOshieBtn, el.motoOshieBtn,
     el.loadShohinBtn, el.saveShohinBtn, el.loadKotaeBtn, el.saveKotaeBtn
   ];
 
@@ -563,9 +571,12 @@
   async function yomitori_kurikaeshi(saidai_kaisuu, machi_ms){
     // 長い返事は小分け(ページ)で届くため、改行が来るまでつなぎ合わせる
     var tameta = [];
+    var todoiteiru = false;
     for(var i = 0; i < saidai_kaisuu; i++){
-      await sleep(machi_ms);
+      // 返事が届き始めたら、続きはすぐ読む（毎回待つと、長い返事ほど時間がかかるため）
+      if(!todoiteiru){ await sleep(machi_ms); }
       var value = await seigen_jikan_tsuki(txChar.readValue(), 1500, "読み取り");
+      todoiteiru = value.byteLength > 0;
       if(value.byteLength > 0){
         log("読み取り: " + value.byteLength + "バイト受信（合計" + (tameta.length + value.byteLength) + "バイト）");
         for(var j = 0; j < value.byteLength; j++){ tameta.push(value.getUint8(j)); }
@@ -589,8 +600,8 @@
         await seigen_jikan_tsuki(rxChar.writeValue(kakera), 3000, "書き込み");
         await sleep(30);
       }
-      // 長い返事（教えた答えの一覧など）は何回にも分けて届くので、最大80回まで読み取る
-      return await yomitori_kurikaeshi(80, 250);
+      // 長い返事（教えた答えの一覧など）は何回にも分けて届くので、最大250回まで読み取る
+      return await yomitori_kurikaeshi(250, 250);
     }catch(e){
       // 通信が詰まると繋ぎ直すまで直らないことがあるため、失敗したら一度切断しておく
       log("通信が詰まりました（" + (e && e.message ? e.message : e) + "）。切断します。");
@@ -728,12 +739,19 @@
     try{
       var res = await sendCommand({ cmd: "add_oshie", kotoba: kotoba, kotae: kotae });
       if(res.ok){
-        renderOshie(res.oshie || []);
-        sakiEl.textContent = res.uwagaki
-          ? "同じキーワードの答えを上書きしました。次の質問から使われます。"
-          : "教えました。次の質問から使われます。";
+        oshieIchiranGaFurui();
+        var msg = (res.uwagaki ? "同じキーワードの答えを上書きしました。" : "教えました。") +
+          "次の質問から使われます（教えた答えは全部で" + res.zenbu + "件）。";
+        var kasanari = res.kasanari || [];
+        if(kasanari.length){
+          msg += "\n※キーワードが重なる答えがあります：" +
+            kasanari.map(function(k){ return "「" + (k.kotoba || []).join("・") + "」"; }).join("") +
+            (res.kasanari_kazu > kasanari.length ? "ほか（全部で" + res.kasanari_kazu + "件）" : "") +
+            "。両方に当てはまる質問には、長く一致したキーワードの答えが使われます。";
+        }
+        sakiEl.textContent = msg;
         await yomikominaoshi();
-        showSaved(sakiEl);
+        showSaved(sakiEl, kasanari.length ? 20000 : 3000);
       } else { showError(res.error || "保存に失敗しました"); }
     }catch(e){ showError(e.message); }
     setBusy(false);
@@ -767,15 +785,47 @@
     });
   });
 
-  function renderOshie(list){
-    if(!list.length){
-      el.oshieList.innerHTML = '<p class="empty">まだ教えた答えはありません。</p>';
+  // 教えた答えは件数が増えても困らないよう、パソコンから新しい順に20件ずつ受け取って表示する
+  var oshie = { hyouji: [], sagasu: "", zenbu: 0, mitsukatta: 0, yonda: false };
+
+  async function oshieWoYomu(tsuzuki){
+    if(!tsuzuki){
+      oshie.sagasu = el.oshieSagasu.value.trim();
+      oshie.hyouji = [];
+    }
+    var res = await sendCommand({ cmd: "get_oshie", sagasu: oshie.sagasu, kara: oshie.hyouji.length });
+    if(!res.ok){ showError(res.error || "取得に失敗しました"); return; }
+    oshie.hyouji = oshie.hyouji.concat(res.oshie || []);
+    oshie.zenbu = res.zenbu || 0;
+    oshie.mitsukatta = res.mitsukatta || 0;
+    oshie.yonda = true;
+    renderOshie();
+  }
+
+  // 会話ログなどから教えたら、表示中の一覧は古くなるので読み込み直してもらう
+  function oshieIchiranGaFurui(){
+    if(!oshie.yonda) return;
+    oshie.yonda = false;
+    oshie.hyouji = [];
+    el.oshieKensuu.hidden = true;
+    el.motoOshieBtn.hidden = true;
+    el.oshieList.innerHTML = '<p class="empty">教えた答えが変わりました。「読み込む／探す」を押すと最新の一覧が出ます。</p>';
+  }
+
+  function renderOshie(){
+    el.oshieKensuu.hidden = false;
+    el.oshieKensuu.textContent = "教えた答えは全部で" + oshie.zenbu + "件" +
+      (oshie.sagasu ? "（「" + oshie.sagasu + "」で見つかったのは" + oshie.mitsukatta + "件）" : "") +
+      "。新しい順に" + oshie.hyouji.length + "件を表示しています。";
+    el.motoOshieBtn.hidden = oshie.hyouji.length >= oshie.mitsukatta;
+    if(!oshie.hyouji.length){
+      el.oshieList.innerHTML = '<p class="empty">' + (oshie.sagasu ? "見つかりませんでした。" : "まだ教えた答えはありません。") + '</p>';
       return;
     }
-    el.oshieList.innerHTML = list.map(function(o, i){
+    el.oshieList.innerHTML = oshie.hyouji.map(function(o, i){
       return (
         '<div class="log-item" data-i="' + i + '">' +
-          '<div class="log-head">' +
+          '<div class="log-head"><span>' + fmtToki(o.toki) + '</span>' +
             (o.kotoba || []).map(function(w){ return '<span class="badge">' + esc(w) + '</span>'; }).join("") +
           '</div>' +
           '<div class="oshie-a">' + esc(o.kotae || "") + '</div>' +
@@ -790,11 +840,20 @@
     clearError();
     if(!connected || busy){ showError("Bluetoothで接続してから削除してください。"); return; }
     var i = Number(ev.target.closest(".log-item").dataset.i);
-    if(!confirm("この教えた答えを削除します。よろしいですか？")) return;
+    var o = oshie.hyouji[i];
+    if(!confirm("「" + (o.kotoba || []).join("・") + "」の教えた答えを削除します。よろしいですか？")) return;
     setBusy(true);
     try{
-      var res = await sendCommand({ cmd: "del_oshie", bangou: i });
-      if(res.ok){ renderOshie(res.oshie || []); } else { showError(res.error || "削除に失敗しました"); }
+      var res = await sendCommand({ cmd: "del_oshie", kotoba: o.kotoba, toki: o.toki });
+      if(res.ok){
+        // 表示中の一覧からも外す（「もっと見る」で続きを正しく受け取るため、件数も合わせる）
+        oshie.hyouji.splice(i, 1);
+        oshie.zenbu = res.zenbu;
+        oshie.mitsukatta = Math.max(0, oshie.mitsukatta - 1);
+        renderOshie();
+        el.oshieSaved.textContent = "削除しました。";
+        showSaved(el.oshieSaved);
+      } else { showError(res.error || "削除に失敗しました"); }
     }catch(e){ showError(e.message); }
     setBusy(false);
   });
@@ -805,9 +864,10 @@
     });
   }
 
-  function showSaved(elm){
+  function showSaved(elm, ms){
     elm.hidden = false;
-    setTimeout(function(){ elm.hidden = true; }, 3000);
+    clearTimeout(elm.keshiTimer);
+    elm.keshiTimer = setTimeout(function(){ elm.hidden = true; }, ms || 3000);
   }
 
   el.connectBtn.addEventListener("click", function(){
@@ -861,11 +921,20 @@
   el.loadOshieBtn.addEventListener("click", async function(){
     clearError();
     setBusy(true);
-    try{
-      var res = await sendCommand({ cmd: "get_oshie" });
-      if(res.ok){ renderOshie(res.oshie || []); } else { showError(res.error || "取得に失敗しました"); }
-    }catch(e){ showError(e.message); }
+    try{ await oshieWoYomu(false); }catch(e){ showError(e.message); }
     setBusy(false);
+  });
+
+  el.motoOshieBtn.addEventListener("click", async function(){
+    clearError();
+    setBusy(true);
+    try{ await oshieWoYomu(true); }catch(e){ showError(e.message); }
+    setBusy(false);
+  });
+
+  // 探す言葉を入れて、キーボードの「決定」を押しても探せるようにする
+  el.oshieSagasu.addEventListener("keydown", function(ev){
+    if(ev.key === "Enter" && !el.loadOshieBtn.disabled){ el.loadOshieBtn.click(); }
   });
 
   el.loadShohinBtn.addEventListener("click", async function(){
