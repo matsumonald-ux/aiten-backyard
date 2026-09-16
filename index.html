@@ -503,7 +503,8 @@
       connected = true;
       setStatus("on");
       syncButtons();
-      log("接続が完了しました。");
+      jidouKoushinKaishi();
+      log("接続が完了しました。（動作状態と温度は10秒ごとに自動で新しくなります）");
     }catch(e){
       connected = false;
       setStatus("off");
@@ -537,6 +538,7 @@
 
   function onDisconnected(){
     log("接続が切れました");
+    jidouKoushinTeishi();
     connected = false;
     rxChar = null; txChar = null;
     setStatus("off");
@@ -590,7 +592,20 @@
     throw new Error("パソコンからの返事がありませんでした");
   }
 
-  async function sendCommand(cmdObj){
+  // Bluetoothのやり取りは1本道なので、重ならないよう順番に1つずつ行う
+  // （自動更新と、ボタンを押した時の読み書きがぶつからないようにするため）
+  var junban = Promise.resolve();
+
+  function sendCommand(cmdObj){
+    var kekka = junban.then(
+      function(){ return sendCommandJissai(cmdObj); },
+      function(){ return sendCommandJissai(cmdObj); }
+    );
+    junban = kekka.catch(function(){});
+    return kekka;
+  }
+
+  async function sendCommandJissai(cmdObj){
     if(!rxChar || !txChar){ throw new Error("接続されていません"); }
     try{
       var meirei = Object.assign({}, cmdObj, { pin: el.pinInput.value });
@@ -642,6 +657,28 @@
     else { jotai = "正常"; cls = "pc-ondo pc-ondo-good"; }
     el.pcOndo.className = cls;
     el.pcOndo.textContent = "パソコン本体の温度：" + ondo.toFixed(0) + "℃（" + jotai + "）※外の気温ではありません";
+  }
+
+  // 接続している間は、動作状態と温度を自動で読み直す
+  // （AIの読み込みが終わって「準備中→動作中」に変わったことに、ボタンを押さなくても気づけるように）
+  var JIDOU_KOUSHIN_MS = 10000;
+  var jidouTimer = null;
+
+  function jidouKoushinKaishi(){
+    jidouKoushinTeishi();
+    jidouTimer = setInterval(async function(){
+      if(!connected || busy) return;
+      try{
+        var res = await sendCommand({ cmd: "tokei" });
+        if(res.ok){ tokeiWoHyouji(res); }
+      }catch(e){
+        // 電波が届かない時などは、画面にエラーを出さず次の回に任せる
+      }
+    }, JIDOU_KOUSHIN_MS);
+  }
+
+  function jidouKoushinTeishi(){
+    if(jidouTimer){ clearInterval(jidouTimer); jidouTimer = null; }
   }
 
   function fmtToki(toki){
